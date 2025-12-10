@@ -85,45 +85,94 @@ class _FormularioPageState extends State<FormularioPage> {
   Future<void> _enviarChamado() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final meId = widget.me['id']?.toString() ?? '';
-    final equipId = widget.equipment?.id?.toString();
+    setState(() => _isLoading = true);
 
-    if (equipId == null || equipId.isEmpty) {
+    // Dados do Usuário e Equipamento
+    final meId = widget.me['id'] as int; // Garanta que é int
+    final equipId = widget.equipment?.id;
+
+    if (equipId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Erro: Equipamento não identificado.')),
       );
+      setState(() => _isLoading = false);
       return;
     }
 
-    final fields = {
-      'name': 'Chamado via App',
-      'description': _obsController.text.trim(),
-      'suggested_date': DateTime.now()
-          .add(const Duration(days: 3))
-          .toIso8601String(),
-      'urgency_level': 'MEDIUM',
-      'creator_FK': meId,
-      'equipments_FK': [equipId],
-      'responsibles_FK': [meId],
-    };
+    // Datas
+    final now = DateTime.now();
+    final suggestedDate = now.add(const Duration(days: 3)).toIso8601String();
 
     try {
-      await _api.createTask(
-        fields,
-        imageFile: _imageFile != null ? File(_imageFile!.path) : null,
-        token: widget.token,
+      // ---------------------------------------------------------
+      // PASSO 1: CRIAR A TAREFA (TASK)
+      // ---------------------------------------------------------
+      final taskPayload = {
+        'name': 'Chamado via App Mobile',
+        'description': _obsController.text.trim().isEmpty
+            ? 'Sem descrição'
+            : _obsController.text.trim(),
+        'suggested_date': suggestedDate,
+        'urgency_level': 'MEDIUM', // Ou um dropdown se tiver
+        'equipments_FK': [equipId], // Lista de IDs
+        'responsibles_FK': [], // Inicialmente vazio
+        // Não enviamos creator_FK aqui pois o backend pega automático,
+        // ou você pode enviar 'creator_FK': meId se preferir.
+      };
+
+      final newTaskId = await _api.createTaskSimple(taskPayload, widget.token);
+
+      if (newTaskId == null) throw Exception("ID da tarefa não retornado.");
+
+      // ---------------------------------------------------------
+      // PASSO 2: CRIAR O STATUS INICIAL (TASK STATUS)
+      // ---------------------------------------------------------
+      final statusPayload = {
+        'task_FK': newTaskId,
+        'status': 'OPEN', // Status inicial padrão
+        'comment': 'Abertura de chamado via Mobile',
+        'user_FK': meId,
+      };
+
+      final newStatusId = await _api.createTaskStatus(
+        statusPayload,
+        widget.token,
       );
 
+      if (newStatusId == null) throw Exception("ID do status não retornado.");
+
+      // ---------------------------------------------------------
+      // PASSO 3: ENVIAR A FOTO (SE HOUVER)
+      // ---------------------------------------------------------
+      if (_imageFile != null) {
+        await _api.uploadTaskStatusImage(
+          imageFile: File(_imageFile!.path),
+          statusId: newStatusId,
+          token: widget.token,
+        );
+      }
+
+      // ---------------------------------------------------------
+      // SUCESSO
+      // ---------------------------------------------------------
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chamado criado com sucesso!')),
+        const SnackBar(
+          content: Text('Chamado criado com sucesso!'),
+          backgroundColor: Colors.green,
+        ),
       );
-      Navigator.pop(context);
+      Navigator.pop(context); // Volta para a tela anterior
     } catch (e) {
+      print('Erro no fluxo de criação: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Erro ao criar chamado: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

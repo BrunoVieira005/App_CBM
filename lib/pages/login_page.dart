@@ -89,16 +89,14 @@ class _LoginPageState extends State<LoginPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          'assets/logocbm.png',
-                          height: 230,
-                          filterQuality: FilterQuality.low,
-                        ),
-                      ],
+                    Center(
+                      child: Image.asset(
+                        'assets/logocbm.png',
+                        height: 230,
+                        filterQuality: FilterQuality.low,
+                      ),
                     ),
+
                     const SizedBox(height: 48),
                     Container(
                       padding: const EdgeInsets.all(24.0),

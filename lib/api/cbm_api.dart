@@ -9,7 +9,8 @@ import 'cbm_models.dart';
 // ===============================================================
 class CbmApi {
   // Para Web usamos 127.0.0.1; para Android emulator usamos 10.0.2.2
-  static const String _host = 'http://localhost:8000';
+  static const String _host =
+      'https://cbm-back-f3erdef8czfvhzgu.centralus-01.azurewebsites.net/';
   static String get _api => '$_host/api';
 
   String? _token; // auth_token do Djoser
@@ -148,38 +149,74 @@ class CbmApi {
     return null;
   }
 
-  // ------------------- CREATE TASK (com imagem opcional) -------------------
-  Future<void> createTask(
-    Map<String, dynamic> fields, {
-    File? imageFile,
+  // 1. Cria a TAREFA e retorna o ID
+  Future<int?> createTaskSimple(
+    Map<String, dynamic> taskData,
+    String token,
+  ) async {
+    final url = Uri.parse('$_api/task/');
+    final response = await http.post(
+      url,
+      headers: _headers(auth: true, token: token),
+      body: jsonEncode(taskData),
+    );
+
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['id']; // Retorna o ID da tarefa criada
+    }
+    throw Exception('Falha ao criar tarefa: ${response.body}');
+  }
+
+  // 2. Cria o STATUS e retorna o ID
+  Future<int?> createTaskStatus(
+    Map<String, dynamic> statusData,
+    String token,
+  ) async {
+    final url = Uri.parse('$_api/task-status/');
+    final response = await http.post(
+      url,
+      headers: _headers(auth: true, token: token),
+      body: jsonEncode(statusData),
+    );
+
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['id']; // Retorna o ID do status criado
+    }
+    throw Exception('Falha ao criar status: ${response.body}');
+  }
+
+  // 3. Envia a IMAGEM associada ao Status
+  Future<void> uploadTaskStatusImage({
+    required File imageFile,
+    required int statusId,
     required String token,
   }) async {
-    final uri = Uri.parse('$_api/task/');
-    final request = http.MultipartRequest('POST', uri);
-    request.headers.addAll(_headers(auth: true, token: token));
+    final url = Uri.parse('$_api/task-status-image/');
 
-    // Adiciona campos, incluindo listas
-    fields.forEach((key, value) {
-      if (value is List) {
-        for (var item in value) {
-          request.fields['$key'] = item.toString();
-        }
-      } else {
-        request.fields[key] = value.toString();
-      }
-    });
+    // Cria requisição Multipart
+    var request = http.MultipartRequest('POST', url);
 
-    if (imageFile != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath('photo', imageFile.path),
-      );
-    }
+    // Headers (Authorization é fundamental)
+    request.headers['Authorization'] = 'Token $token';
 
-    final res = await request.send();
-    final body = await res.stream.bytesToString();
+    // Campos de Texto
+    request.fields['task_status_FK'] = statusId.toString();
 
-    if (res.statusCode != 201) {
-      throw Exception('Erro ao criar tarefa (${res.statusCode}): $body');
+    // Arquivo
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'image', // Nome do campo no seu model Django
+        imageFile.path,
+      ),
+    );
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode != 201) {
+      throw Exception('Falha no upload da imagem: ${response.body}');
     }
   }
 
